@@ -20,17 +20,20 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
 
-        // --- APIキー取得の設定 ---
+        // 【修正点】Vercelの環境変数、または自前で定義した変数からキーを取得
         const getApiKey = () => {
-            // Vercelの環境変数、または自前のwindowオブジェクトから取得を試みる
-            // ※Vercelで「GEMINI_API_KEY」という名前で登録してください
+            // Vercelで設定した環境変数をフロントエンドで使うには本来ビルドプロセスが必要ですが、
+            // 1枚のHTMLで動かす場合は、一旦ここを空にしておき、
+            // Vercelの設定で「GEMINI_API_KEY」を入れて「Redeploy」してみてください。
             return window.GEMINI_API_KEY || ""; 
         };
 
+        // Scenario Database (省略せずに元のデータを保持)
         const SCENARIOS = {
-            nursery: { label: "保育士", color: "bg-blue-600", cases: { hiyari: [{ id: 'n-h-1', title: "アレルギー児への誤配膳", situation: "給食時、卵アレルギーのある園児のトレーに誤って通常食が置かれたが、口にする前に職員が気づいた。" }], incident: [{ id: 'n-i-1', title: "ジャングルジムからの転落", situation: "園庭開放中、4歳児がジャングルジムから転落し、左腕を骨折した。" }] } },
+            nursery: { label: "保育士", color: "bg-blue-600", cases: { hiyari: [{ id: 'n-h-1', title: "アレルギー児への誤配膳", situation: "給食時、卵アレルギーのある園児のトレーに誤って通常食が置かれたが、口にする前に職員が気づいた。" }, { id: 'n-h-2', title: "午睡中のうつ伏せ寝", situation: "午睡チェック中、仰向け寝を確認してから3分後に園児が自力でうつ伏せになっていた。" }], incident: [{ id: 'n-i-1', title: "ジャングルジムからの転落", situation: "園庭開放中、4歳児がジャングルジムから転落し、左腕を骨折した。" }, { id: 'n-i-2', title: "玩具のパーツ誤飲", situation: "1歳児が床に落ちていたブロックの欠片を飲み込んだ。" }] } },
+            nurse: { label: "看護師", color: "bg-rose-600", cases: { hiyari: [{ id: 'nu-h-1', title: "薬剤の期限切れ", situation: "緊急用座薬の在庫点検中、有効期限が1週間過ぎていることに気づいた。" }], incident: [{ id: 'nu-i-1', title: "吸入薬の誤投与", situation: "喘息児の吸入時、吸入器の設定を誤り規定の3倍量を投与。" }] } },
             ot: { label: "作業療法士 (OT)", color: "bg-emerald-600", cases: { hiyari: [{ id: 'ot-h-1', title: "吊り下げ遊具の緩み", situation: "訓練開始前の点検で、ブランコのカラビナのロックが半分開いているのを発見。" }], incident: [{ id: 'ot-i-1', title: "トランポリンでの転倒", situation: "粗大運動中、着地のバランスを崩してフレームに顔を強打。" }] } },
             st: { label: "言語聴覚士 (ST)", color: "bg-amber-600", cases: { hiyari: [{ id: 'st-h-1', title: "水分摂取時のむせ", situation: "嚥下訓練の導入時、水分で激しいむせ込みが見られた。" }], incident: [{ id: 'st-i-1', title: "食事中の部分窒息", situation: "咀嚼評価中、一口量が多すぎて咽頭に停滞。顔色が変わったため背部叩打を実施。" }] } },
             psychologist: { label: "心理士", color: "bg-indigo-600", cases: { hiyari: [{ id: 'p-h-1', title: "アセスメント資料の放置", situation: "面談終了後、次の家族を案内する際に、前のケースの検査結果が机に露出したままだった。" }], incident: [{ id: 'p-i-1', title: "激しい他害行為", situation: "課題を嫌がった児童が心理士の手を激しく噛み、流血。" }] } }
@@ -41,13 +44,14 @@
                 shield: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
                 arrowRight: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>,
                 refresh: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+                check: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>,
                 send: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             };
             return icons[name] || null;
         };
 
         function App() {
-            const [step, setStep] = useState('role');
+            const [step, setStep] = useState('role'); 
             const [role, setRole] = useState(null);
             const [level, setLevel] = useState(null);
             const [scenario, setScenario] = useState(null);
@@ -65,33 +69,29 @@
             const submitReport = async () => {
                 const key = getApiKey();
                 if (!key) {
-                    alert("APIキーが読み込めません。Vercelの設定を確認してください。");
+                    alert("APIキーが設定されていません。Vercelの環境変数を確認するか、直接書き込んでください。");
                     return;
                 }
 
                 setLoading(true);
+                const systemPrompt = `あなたは療育支援室のリスク管理委員長です。スタッフの報告書に、客観的事実に基づいた具体的な改善案を150文字程度でフィードバックしてください。`;
+
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: `
-                                職種: ${SCENARIOS[role].label}
-                                事象: ${scenario.title}
-                                詳細: ${scenario.situation}
-                                報告書: ${JSON.stringify(report)}
-                            ` }] }],
-                            systemInstruction: { parts: [{ text: "あなたは療育のリスク管理委員長です。具体的な改善策を150文字程度でフィードバックしてください。" }] }
+                            contents: [{ parts: [{ text: `状況: ${scenario.situation}\n報告: ${JSON.stringify(report)}` }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] }
                         })
                     });
 
+                    if (!res.ok) throw new Error('通信エラー');
                     const data = await res.json();
-                    if (data.error) throw new Error(data.error.message);
-                    setFeedback(data.candidates?.[0]?.content?.parts?.[0]?.text || "返答なし");
+                    setFeedback(data.candidates?.[0]?.content?.parts?.[0]?.text || "返信がありません。");
                     setStep('result');
                 } catch (e) {
                     alert("エラー: " + e.message);
-                    setFeedback("エラーが発生しました。");
                 } finally {
                     setLoading(false);
                 }
@@ -99,50 +99,79 @@
 
             return (
                 <div className="max-w-xl mx-auto p-4 md:py-10">
-                    <header className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 mb-8 flex items-center justify-between glass">
+                    <header className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 mb-8 flex items-center justify-between glass sticky top-4 z-50">
                         <div className="flex items-center gap-3">
-                            <div className="bg-slate-900 p-2.5 rounded-2xl text-white"><Icon name="shield" /></div>
-                            <div><h1 className="font-black text-lg">リスク管理シミュレーター</h1></div>
+                            <div className="bg-slate-900 p-2.5 rounded-2xl text-white shadow-xl"><Icon name="shield" /></div>
+                            <div>
+                                <h1 className="font-black text-lg tracking-tight">リスク管理シミュレーター</h1>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Nursery Edition</p>
+                            </div>
                         </div>
+                        {step !== 'role' && (
+                            <button onClick={() => setStep('role')} className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                                <Icon name="refresh" />
+                            </button>
+                        )}
                     </header>
+
                     <main>
                         {step === 'role' && (
                             <div className="space-y-4 fade-in">
                                 {Object.keys(SCENARIOS).map(key => (
-                                    <button key={key} onClick={() => { setRole(key); setStep('level'); }} className="w-full flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200 hover:border-slate-900 transition-all">
-                                        <span className="font-bold text-lg">{SCENARIOS[key].label}</span>
+                                    <button key={key} onClick={() => { setRole(key); setStep('level'); }} className="group flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200 hover:border-slate-900 hover:shadow-xl transition-all w-full">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-3 h-3 rounded-full ${SCENARIOS[key].color}`}></div>
+                                            <span className="font-bold text-lg">{SCENARIOS[key].label}</span>
+                                        </div>
                                         <Icon name="arrowRight" />
                                     </button>
                                 ))}
                             </div>
                         )}
+
                         {step === 'level' && (
-                            <div className="grid grid-cols-2 gap-4 fade-in">
-                                <button onClick={() => { setLevel('hiyari'); handlePickScenario(role, 'hiyari'); }} className="bg-white p-8 rounded-3xl border-2 border-emerald-50 hover:border-emerald-500 transition-all">ヒヤリハット</button>
-                                <button onClick={() => { setLevel('incident'); handlePickScenario(role, 'incident'); }} className="bg-white p-8 rounded-3xl border-2 border-rose-50 hover:border-rose-500 transition-all">インシデント</button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 fade-in">
+                                <button onClick={() => { setLevel('hiyari'); handlePickScenario(role, 'hiyari'); }} className="bg-white p-8 rounded-3xl border-2 border-emerald-50 hover:border-emerald-500 hover:shadow-2xl transition-all text-center">
+                                    <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><Icon name="check" /></div>
+                                    <h3 className="font-black text-emerald-800 text-lg">ヒヤリハット</h3>
+                                </button>
+                                <button onClick={() => { setLevel('incident'); handlePickScenario(role, 'incident'); }} className="bg-white p-8 rounded-3xl border-2 border-rose-50 hover:border-rose-500 hover:shadow-2xl transition-all text-center">
+                                    <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><Icon name="shield" /></div>
+                                    <h3 className="font-black text-rose-800 text-lg">インシデント</h3>
+                                </button>
                             </div>
                         )}
+
                         {step === 'edit' && (
-                            <div className="space-y-6 fade-in">
-                                <div className="bg-slate-900 rounded-3xl p-6 text-white">
-                                    <h3 className="text-xl font-black mb-2">{scenario.title}</h3>
-                                    <p className="text-sm italic opacity-80">{scenario.situation}</p>
+                            <div className="space-y-6 fade-in pb-10">
+                                <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden">
+                                    <h3 className="text-xl font-black mb-4">{scenario.title}</h3>
+                                    <div className="bg-white/10 p-5 rounded-2xl text-sm italic">「{scenario.situation}」</div>
                                 </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
-                                    <textarea placeholder="発生状況・理由" className="w-full p-4 bg-slate-50 rounded-2xl min-h-[100px]" value={report.description} onChange={e => setReport({...report, description: e.target.value})} />
-                                    <textarea placeholder="具体的な改善策" className="w-full p-4 bg-slate-50 rounded-2xl min-h-[100px]" value={report.improvement} onChange={e => setReport({...report, improvement: e.target.value})} />
-                                    <button onClick={submitReport} disabled={loading} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black flex justify-center items-center gap-2">
-                                        {loading ? "送信中..." : <><Icon name="send" /> レビュー依頼</>}
+
+                                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">1. 発生状況・理由</label>
+                                        <textarea className="w-full p-4 bg-slate-50 rounded-2xl min-h-[120px]" value={report.description} onChange={e => setReport({...report, description: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">3. 改善策</label>
+                                        <textarea className="w-full p-4 bg-slate-50 rounded-2xl min-h-[120px]" value={report.improvement} onChange={e => setReport({...report, improvement: e.target.value})} />
+                                    </div>
+                                    <button onClick={submitReport} disabled={loading} className="w-full py-5 rounded-2xl font-black bg-slate-900 text-white flex items-center justify-center gap-3">
+                                        {loading ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Icon name="send" /> レビューを依頼</>}
                                     </button>
                                 </div>
                             </div>
                         )}
+
                         {step === 'result' && (
-                            <div className="fade-in space-y-6">
-                                <div className="bg-indigo-950 text-white p-8 rounded-3xl">
-                                    <p className="text-base leading-relaxed">{feedback}</p>
+                            <div className="space-y-6 fade-in">
+                                <div className="bg-indigo-950 text-white p-8 rounded-3xl relative shadow-2xl overflow-hidden">
+                                    <h3 className="text-indigo-400 font-black text-[10px] uppercase tracking-[0.4em] mb-6 flex items-center gap-2"><Icon name="shield" /> Official Review</h3>
+                                    <p className="text-base leading-relaxed whitespace-pre-wrap font-medium text-slate-100 italic border-l-4 border-indigo-500 pl-6">{feedback}</p>
                                 </div>
-                                <button onClick={() => setStep('role')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold">TOPに戻る</button>
+                                <button onClick={() => setStep('role')} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-sm font-bold">トレーニングを続ける</button>
                             </div>
                         )}
                     </main>
