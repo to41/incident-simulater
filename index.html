@@ -23,7 +23,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        const apiKey = ""; // Empty string for environment handling
+        const apiKey = window.env?.GEMINI_API_KEY || ""; // Empty string for environment handling
 
         // Scenario Database
         const SCENARIOS = {
