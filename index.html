@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リスク管理シミュレーター | 保育・療育支援室</title>
+    <!-- React & Tailwind CSS CDNs -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; }
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const apiKey = ""; // Empty string for environment handling
+
+        // Scenario Database
+        const SCENARIOS = {
+            nursery: {
+                label: "保育士",
+                color: "bg-blue-600",
+                cases: {
+                    hiyari: [
+                        { id: 'n-h-1', title: "アレルギー児への誤配膳", situation: "給食時、卵アレルギーのある園児のトレーに誤って通常食が置かれたが、口にする前に職員が気づいた。" },
+                        { id: 'n-h-2', title: "午睡中のうつ伏せ寝", situation: "午睡チェック中、仰向け寝を確認してから3分後に園児が自力でうつ伏せになっていた。事故には至らなかった。" }
+                    ],
+                    incident: [
+                        { id: 'n-i-1', title: "ジャングルジムからの転落", situation: "園庭開放中、4歳児がジャングルジムから転落し、左腕を骨折した。当時、職員は別の子の対応に追われていた。" },
+                        { id: 'n-i-2', title: "玩具のパーツ誤飲", situation: "1歳児が床に落ちていたブロックの欠片を飲み込んだ。泣き声の変化はないが、翌日便から排出されるまで経過観察となった。" }
+                    ]
+                }
+            },
+            nurse: {
+                label: "看護師",
+                color: "bg-rose-600",
+                cases: {
+                    hiyari: [
+                        { id: 'nu-h-1', title: "薬剤の期限切れ", situation: "緊急用座薬の在庫点検中、有効期限が1週間過ぎていることに気づいた。最近の緊急使用はなかった。" },
+                        { id: 'nu-h-2', title: "分包薬の混入", situation: "A君の薬袋の中に、B君の散薬が1包紛れ込んでいるのを発見。投与前にダブルチェックで気づいた。" }
+                    ],
+                    incident: [
+                        { id: 'nu-i-1', title: "吸入薬の誤投与", situation: "喘息児の吸入時、吸入器の設定を誤り規定の3倍量を投与。直後に気づき主治医に連絡。軽い動悸が見られた。" },
+                        { id: 'nu-i-2', title: "熱性痙攣の対応遅延", situation: "発熱した児を医務室で観察中、別件で退室。5分後に戻ると痙攣が始まっており、正確な開始時刻の把握が遅れた。" }
+                    ]
+                }
+            },
+            ot: {
+                label: "作業療法士 (OT)",
+                color: "bg-emerald-600",
+                cases: {
+                    hiyari: [
+                        { id: 'ot-h-1', title: "吊り下げ遊具の緩み", situation: "訓練開始前の点検で、ブランコのカラビナのロックが半分開いているのを発見。そのまま乗せていれば脱落の危険があった。" },
+                        { id: 'ot-h-2', title: "ハサミによる接触", situation: "制作中、児童が急に振り返った際、持っていたハサミの刃が職員の服をかすめた。児童に怪我はなかった。" }
+                    ],
+                    incident: [
+                        { id: 'ot-i-1', title: "トランポリンでの転倒", situation: "粗大運動中、着地のバランスを崩してフレームに顔を強打。たんこぶができ、しばらく嘔気が見られた。" },
+                        { id: 'ot-i-2', title: "感覚過敏のパニック自傷", situation: "感覚入力の調整中、児童が強い不快感からパニックになり、自分の頭を壁に打ち付け出血した。介入の強度が適切でなかった。" }
+                    ]
+                }
+            },
+            st: {
+                label: "言語聴覚士 (ST)",
+                color: "bg-amber-600",
+                cases: {
+                    hiyari: [
+                        { id: 'st-h-1', title: "水分摂取時のむせ", situation: "嚥下訓練の導入時、水分で激しいむせ込みが見られた。窒息には至らなかったが、ポジショニングが適切でなかった可能性がある。" },
+                        { id: 'st-h-2', title: "教材の小パーツ脱落", situation: "発話訓練で使用していた絵カードのハトメが外れ、児童が口に入れようとした。すぐに制止した。" }
+                    ],
+                    incident: [
+                        { id: 'st-i-1', title: "食事中の部分窒息", situation: "咀嚼評価中、一口量が多すぎて咽頭に停滞。顔色が変わったため背部叩打を実施し、内容物を吐き出させた。" },
+                        { id: 'st-i-2', title: "評価中の椅子からの転落", situation: "多動傾向の強い児の評価中、椅子を激しく揺らして後ろに転倒。後頭部を打ち、受診の結果、経過観察となった。" }
+                    ]
+                }
+            },
+            psychologist: {
+                label: "心理士",
+                color: "bg-indigo-600",
+                cases: {
+                    hiyari: [
+                        { id: 'p-h-1', title: "アセスメント資料の放置", situation: "面談終了後、次の家族を案内する際に、前のケースの検査結果が机に露出したままだった。入室直前に気づき回収した。" },
+                        { id: 'p-h-2', title: "検査室からの飛び出し", situation: "検査中に飽きた児がドアを開けて廊下へ飛び出そうとした。ドアの鍵（高い位置の補助錠）をかけ忘れていた。" }
+                    ],
+                    incident: [
+                        { id: 'p-i-1', title: "激しい他害行為", situation: "課題を嫌がった児童が心理士の手を激しく噛み、流血。その後児童はパニックになり自力で落ち着くことができなかった。" },
+                        { id: 'p-i-2', title: "連絡帳の誤渡し", situation: "A君のカバンに、誤って別児の面談記録が書かれた連絡帳を入れてしまった。保護者が帰宅後に気づき、電話で発覚した。" }
+                    ]
+                }
+            }
+        };
+
+        // UI Component: Icon Wrapper
+        const Icon = ({ name }) => {
+            const icons = {
+                shield: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+                arrowRight: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>,
+                refresh: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+                check: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>,
+                send: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+            };
+            return icons[name] || null;
+        };
+
+        function App() {
+            const [step, setStep] = useState('role'); // role, level, edit, result
+            const [role, setRole] = useState(null);
+            const [level, setLevel] = useState(null);
+            const [scenario, setScenario] = useState(null);
+            const [report, setReport] = useState({
+                description: "",
+                processing: "",
+                improvement: ""
+            });
+            const [feedback, setFeedback] = useState("");
+            const [loading, setLoading] = useState(false);
+
+            const handlePickScenario = (r, l) => {
+                const list = SCENARIOS[r].cases[l];
+                const picked = list[Math.floor(Math.random() * list.length)];
+                setScenario(picked);
+                setStep('edit');
+            };
+
+            const submitReport = async () => {
+                setLoading(true);
+                const systemPrompt = `あなたは療育支援室のリスク管理委員長です。スタッフから提出された報告書を読み、プロフェッショナルなフィードバックを行ってください。評価のポイントは「事実が客観的に書かれているか」「仕組み（ハード・手順）の改善になっているか」です。精神論（注意する等）ではなく具体的な対策を求めてください。150文字程度。`;
+                
+                const userQuery = `
+                    職種: ${SCENARIOS[role].label}
+                    事象: ${scenario.title} (${level === 'hiyari' ? 'ヒヤリハット' : 'インシデント'})
+                    発生状況詳細: ${scenario.situation}
+
+                    【提出された報告書】
+                    1. 発生状況・理由: ${report.description}
+                    2. 処理・経過: ${report.processing}
+                    3. 改善策: ${report.improvement}
+                `;
+
+                try {
+                    let delay = 1000;
+                    for (let i = 0; i < 5; i++) {
+                        try {
+                            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{ parts: [{ text: userQuery }] }],
+                                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                                })
+                            });
+                            if (!res.ok) throw new Error();
+                            const data = await res.json();
+                            setFeedback(data.candidates?.[0]?.content?.parts?.[0]?.text || "フィードバックが得られませんでした。");
+                            setStep('result');
+                            break;
+                        } catch (e) {
+                            if (i === 4) throw e;
+                            await new Promise(r => setTimeout(r, delay));
+                            delay *= 2;
+                        }
+                    }
+                } catch (e) {
+                    setFeedback("通信エラーが発生しました。時間を置いて再度お試しください。");
+                    setStep('result');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="max-w-xl mx-auto p-4 md:py-10">
+                    {/* App Header */}
+                    <header className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 mb-8 flex items-center justify-between glass sticky top-4 z-50">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-slate-900 p-2.5 rounded-2xl text-white shadow-xl">
+                                <Icon name="shield" />
+                            </div>
+                            <div>
+                                <h1 className="font-black text-lg tracking-tight">リスク管理シミュレーター</h1>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Incident Report Trainer</p>
+                            </div>
+                        </div>
+                        {step !== 'role' && (
+                            <button onClick={() => { setStep('role'); setReport({description:"", processing:"", improvement:""}); }} className="p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                                <Icon name="refresh" />
+                            </button>
+                        )}
+                    </header>
+
+                    {/* Main Content Area */}
+                    <main>
+                        {step === 'role' && (
+                            <div className="space-y-4 fade-in">
+                                <h2 className="text-center text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">ステップ1: 職種を選択してください</h2>
+                                <div className="grid gap-3">
+                                    {Object.keys(SCENARIOS).map(key => (
+                                        <button 
+                                            key={key}
+                                            onClick={() => { setRole(key); setStep('level'); }}
+                                            className="group flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-200 hover:border-slate-900 hover:shadow-xl transition-all"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-3 h-3 rounded-full ${SCENARIOS[key].color} opacity-20 group-hover:opacity-100 transition-opacity`}></div>
+                                                <span className="font-bold text-lg">{SCENARIOS[key].label}</span>
+                                            </div>
+                                            <Icon name="arrowRight" />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'level' && (
+                            <div className="space-y-6 fade-in">
+                                <h2 className="text-center text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">ステップ2: レベルを選択してください</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <button 
+                                        onClick={() => { setLevel('hiyari'); handlePickScenario(role, 'hiyari'); }}
+                                        className="bg-white p-8 rounded-3xl border-2 border-emerald-50 hover:border-emerald-500 hover:shadow-2xl transition-all group text-center"
+                                    >
+                                        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                                            <Icon name="check" />
+                                        </div>
+                                        <h3 className="font-black text-emerald-800 text-lg">ヒヤリハット</h3>
+                                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">事故には至らなかったが、<br/>一歩間違えれば危なかった事象</p>
+                                    </button>
+                                    <button 
+                                        onClick={() => { setLevel('incident'); handlePickScenario(role, 'incident'); }}
+                                        className="bg-white p-8 rounded-3xl border-2 border-rose-50 hover:border-rose-500 hover:shadow-2xl transition-all group text-center"
+                                    >
+                                        <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                                            <Icon name="shield" />
+                                        </div>
+                                        <h3 className="font-black text-rose-800 text-lg">インシデント</h3>
+                                        <p className="text-xs text-slate-400 mt-2 leading-relaxed">実際に怪我や症状が発生し、<br/>具体的な処置が必要となった事象</p>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'edit' && (
+                            <div className="space-y-6 fade-in pb-10">
+                                <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-2xl relative overflow-hidden">
+                                    <div className="relative z-10">
+                                        <div className="flex items-center gap-2 mb-3 text-[10px] font-bold text-slate-400 tracking-widest uppercase">
+                                            <span>{SCENARIOS[role].label}</span>
+                                            <span className="opacity-30">/</span>
+                                            <span className={level === 'hiyari' ? 'text-emerald-400' : 'text-rose-400'}>
+                                                {level === 'hiyari' ? 'Hiyari-Hat' : 'Incident Report'}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-xl font-black mb-4 tracking-tight leading-tight">{scenario.title}</h3>
+                                        <div className="bg-white/10 p-5 rounded-2xl text-sm leading-relaxed border border-white/10 italic">
+                                            「{scenario.situation}」
+                                        </div>
+                                    </div>
+                                    <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -mr-20 -mt-20"></div>
+                                </div>
+
+                                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">1. 発生状況・理由</label>
+                                        <textarea 
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:bg-white focus:border-slate-900 outline-none text-sm min-h-[140px] transition-all leading-relaxed shadow-inner"
+                                            placeholder="事実関係と、なぜ起きたかの分析を記入してください"
+                                            value={report.description}
+                                            onChange={e => setReport({...report, description: e.target.value})}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">2. 発生後の処理および登園状況</label>
+                                        <textarea 
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:bg-white focus:border-slate-900 outline-none text-sm min-h-[110px] transition-all leading-relaxed shadow-inner"
+                                            placeholder="処置の内容、報告先、その後の子供の様子など"
+                                            value={report.processing}
+                                            onChange={e => setReport({...report, processing: e.target.value})}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">3. みんなで話し合った改善策</label>
+                                        <textarea 
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:bg-white focus:border-slate-900 outline-none text-sm min-h-[140px] transition-all leading-relaxed shadow-inner"
+                                            placeholder="個人の反省ではなく、環境や手順など組織的な対策を記入してください"
+                                            value={report.improvement}
+                                            onChange={e => setReport({...report, improvement: e.target.value})}
+                                        />
+                                    </div>
+
+                                    <button 
+                                        onClick={submitReport}
+                                        disabled={loading || !report.description || !report.improvement}
+                                        className={`w-full py-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl ${
+                                            loading ? 'bg-slate-100 text-slate-400' : 'bg-slate-900 text-white hover:bg-black active:scale-95 shadow-slate-200'
+                                        }`}
+                                    >
+                                        {loading ? <div className="w-6 h-6 border-4 border-slate-300 border-t-slate-900 rounded-full animate-spin"></div> : <><Icon name="send" /> レビューを依頼する</>}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'result' && (
+                            <div className="space-y-6 fade-in">
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+                                    <div className="bg-slate-50 p-6 border-b border-slate-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                            <span className="font-bold text-slate-700">リスク管理委員会 総評</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-widest">Doc-No: {Math.floor(Math.random()*100000)}</span>
+                                    </div>
+
+                                    <div className="p-6 md:p-8 space-y-8">
+                                        <div className="bg-indigo-950 text-white p-6 md:p-10 rounded-3xl relative shadow-2xl overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16"></div>
+                                            <h3 className="text-indigo-400 font-black text-[10px] uppercase tracking-[0.4em] mb-6 flex items-center gap-2">
+                                                <Icon name="shield" /> Official Review
+                                            </h3>
+                                            <p className="text-base leading-relaxed whitespace-pre-wrap font-medium text-slate-100 border-l-4 border-indigo-500 pl-6 py-2 italic">
+                                                {feedback}
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <button 
+                                                onClick={() => setStep('edit')}
+                                                className="w-full py-4 border-2 border-slate-100 rounded-2xl text-sm font-bold text-slate-500 hover:bg-slate-50 hover:border-slate-200 transition-all"
+                                            >
+                                                内容を修正して再提出する
+                                            </button>
+                                            <button 
+                                                onClick={() => setStep('role')}
+                                                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-black transition-all shadow-xl shadow-slate-200"
+                                            >
+                                                別の事例でトレーニングを続ける
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                    
+                    <footer className="mt-12 text-center pb-10">
+                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">Nursery Risk Management System v6.0</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
